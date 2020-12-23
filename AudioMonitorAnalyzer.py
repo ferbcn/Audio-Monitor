@@ -1,5 +1,5 @@
 import sys
-import AudioIn as audio
+from AudioIn import AudioIn
 import numpy as np
 
 from PyQt5.QtCore import QTimer
@@ -94,7 +94,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.timer.timeout.connect(self.update_data)
         self.refresh_rate = 10
 
-        self.myaudio = audio.AudioIn()
+        self.myaudio = AudioIn()
         #print(self.myaudio.get_input_devices_info())
         self.hz = 0
 

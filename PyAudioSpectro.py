@@ -1,5 +1,5 @@
 import sys
-import AudioIn as audio
+from AudioIn import AudioIn
 import numpy as np
 import pygame
 import random
@@ -32,6 +32,7 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
     # Convert the 0-1 range into a value in the right range.
     return rightMin + (valueScaled * rightSpan)
 
+
 class Spectrum:
 
     def __init__(self, fps=10):
@@ -54,7 +55,7 @@ class Spectrum:
 
         # init pyaudio input device at default device (None)
         #print(self.myaudio.get_input_devices_info())
-        self.myaudio = audio.AudioIn()
+        self.myaudio = AudioIn()
         self.myaudio.start_stream(output=False, device=None)
         self.show_spectrum = True
 
@@ -80,7 +81,7 @@ class Spectrum:
                     self.myaudio.stop_stream()
                     self.show_spectrum = False
                 else:
-                    self.myaudio.start_stream(output=False, device=4)
+                    self.myaudio.start_stream(output=False, device=None)
                     self.show_spectrum = True
 
             # Game Logic
