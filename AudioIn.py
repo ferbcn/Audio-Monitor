@@ -2,13 +2,14 @@ import pyaudio
 import numpy as np
 
 WIDTH = 2
-CHUNK = 1024
-FORMAT = pyaudio.paInt16
+# CHUNK = 2048
+# FORMAT = pyaudio.paInt32
 
 class AudioIn:
-    def __init__(self):
+    def __init__(self, chunk=1024, sample_rate=44100):
         self.p = pyaudio.PyAudio()
-        self.audio = np.empty((CHUNK), dtype="int16")
+        self.chunk = chunk
+        self.audio = np.empty(chunk, dtype="int16")
 
     def __del__(self):
         self.p.terminate()
@@ -17,14 +18,15 @@ class AudioIn:
         self.audio = np.fromstring(in_data, dtype=np.int16)
         return (in_data, pyaudio.paContinue)
 
-    def start_stream(self, rate=20480, output=True, device=None, channels=1):
+    def start_stream(self, rate=44100, chunk=44100, output=False, device=None, channels=1):
         self.stream = self.p.open(format=self.p.get_format_from_width(WIDTH),
                                   channels=channels,
                                   rate=rate,
                                   input=True,
                                   output=output,
                                   stream_callback=self.callback,
-                                  input_device_index=device)
+                                  input_device_index=device,
+                                  frames_per_buffer=chunk)
         self.stream.start_stream()
 
     def stop_stream(self):

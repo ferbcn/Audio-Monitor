@@ -206,7 +206,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.output_on:
             if self.monitor_on:
                 self.on_click()
-            self.myaudio.start_stream(output=True, device=self.input_device_id)
+            self.myaudio.start_stream(output=True, chunk=CHUNK, device=self.input_device_id)
             self.monitor_on = True
             self.button_on.setText('MONITOR\nON')
             self.button_on.setStyleSheet("background-color: #3a3a3a; color: green")
@@ -226,7 +226,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_click(self):
         if not self.monitor_on:
-            self.myaudio.start_stream(output=False, device=self.input_device_id)
+            self.myaudio.start_stream(output=False, chunk=CHUNK, device=self.input_device_id)
             self.monitor_on = True
             self.button_on.setText('MONITOR\nON')
             self.button_on.setStyleSheet ("background-color: #3a3a3a; color: green")
@@ -252,7 +252,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.input_device_id = self.get_device_index_by_name(choice)
         if self.output_on or self.monitor_on:
             self.myaudio.stop_stream()
-            self.myaudio.start_stream(output=self.output_on, device=self.input_device_id)
+            self.myaudio.start_stream(output=self.output_on, chunk=CHUNK, device=self.input_device_id)
 
 
     def get_device_index_by_name(self, choice):

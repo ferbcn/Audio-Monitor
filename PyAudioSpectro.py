@@ -54,9 +54,9 @@ class Spectrum:
         self.max_values = [0 for _ in range (BOARD_WIDTH)]
 
         # init pyaudio input device at default device (None)
-        #print(self.myaudio.get_input_devices_info())
         self.myaudio = AudioIn()
-        self.myaudio.start_stream(output=False, device=None)
+        # print(self.myaudio.get_input_devices_info())
+        self.myaudio.start_stream(output=False, chunk=1024, device=3)
         self.show_spectrum = True
 
         # Allowing the user to close the window...
