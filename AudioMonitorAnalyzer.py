@@ -14,9 +14,13 @@ from matplotlib.figure import Figure
 
 CHUNK = 1024
 
+
 class MplCanvas(FigureCanvasQTAgg):
 
     def __init__(self, parent=None, width=5, height=4, dpi=100):
+        self.line1 = None
+        self.bar1 = None
+        self.peak_text = None
         self.fig = Figure(figsize=(width, height), dpi=dpi)
         super(MplCanvas, self).__init__(self.fig)
         self.fig.set_facecolor('#595959')
@@ -43,12 +47,13 @@ class MplCanvas(FigureCanvasQTAgg):
         self.bx.set_title('Frequency Domain', color='#000000', size='medium')
         self.bx.tick_params(axis='both', which='major', labelsize=6, labelcolor='#000000')
         self.bx.set_ylim([0, 1000])
-        self.bx.set_xlim([0, 5000])
+        self.bx.set_xlim([10, 5000])
 
         x = np.arange(0, 10*CHUNK, 20)
         y = [0 for x in range(int(CHUNK/2))]
         self.bar1, = self.bx.plot(x, y, 'r-')
-
+        
+        self.peak_text = self.bx.text(0, 0, '', color='red', fontsize=8, ha='center', va='bottom')
 
     def update_plot(self, data):
         # update time plot
@@ -61,11 +66,37 @@ class MplCanvas(FigureCanvasQTAgg):
         T = t[1] - t[0]  # sampling interval
         N = s.size
         fft = np.fft.fft(data)
-        # 1/T = frequency
-        f = np.linspace(0, 1 / T, N)
         abs_data = np.abs(fft)
         bar_data = abs_data[:N // 2] * 1 / N
-        hz = bar_data.argmax(axis=0) * 20
+        
+        # Create frequency array starting from 10 Hz
+        freq = np.arange(0, len(bar_data)) * 20  # 20 Hz per bin
+        mask = freq >= 10  # Only include frequencies >= 10 Hz
+        bar_data = bar_data[mask]
+        freq = freq[mask]
+        
+        # Get current slider range
+        slider_min, slider_max = self.bx.get_xlim()
+        
+        # Find peak within slider range
+        mask = (freq >= slider_min) & (freq <= slider_max)
+        if np.any(mask):  # Only if there are frequencies in the range
+            peak_idx = np.argmax(bar_data[mask])
+            peak_freq = freq[mask][peak_idx]
+            peak_amplitude = bar_data[mask][peak_idx]
+            
+            # Only show peak if amplitude is above threshold
+            amplitude_threshold = 100
+            if peak_amplitude > amplitude_threshold:
+                self.peak_text.set_position((peak_freq, peak_amplitude + 50))
+                self.peak_text.set_text(f'{peak_freq:.0f} Hz')
+            else:
+                self.peak_text.set_text('')  # Hide text if amplitude is too low
+        else:
+            self.peak_text.set_text('')  # Hide text if no peaks in range
+        
+        hz = freq[bar_data.argmax()]  # Get frequency of maximum amplitude
+        self.bar1.set_xdata(freq)
         self.bar1.set_ydata(bar_data)
 
         # update figure
@@ -79,6 +110,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, *args, **kwargs):
         super(MainWindow, self).__init__(*args, **kwargs)
+        self.label = None
+        self.hz_label = None
+        self.sc = None
+        self.button_on_out = None
+        self.button_on = None
         self.title = 'Audio Input Monitor and Analyzer'
         self.setWindowTitle(self.title)
 
@@ -94,18 +130,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.timer.timeout.connect(self.update_data)
         self.refresh_rate = 10
 
-        self.myaudio = AudioIn()
-        #print(self.myaudio.get_input_devices_info())
+        self.my_audio = AudioIn()
         self.hz = 0
-
         self.input_device_id = None
-
-        self.initUI()
-
+        self.output_device_id = None
+        self.init_ui()
         self.show()
 
-    def initUI(self):
-
+    def init_ui(self):
         page_layout = QVBoxLayout()
         page_widget = QWidget()
         page_widget.setLayout(page_layout)
@@ -119,7 +151,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.button_on.setStyleSheet("background-color: #777777")
         self.button_on.setMinimumHeight(100)
         self.button_on.setMinimumWidth(100)
-        self.button_on.setMaximumWidth(200)
+        self.button_on.setMaximumWidth(250)
         self.button_on.clicked.connect(self.on_click)
         button_layout.addWidget(self.button_on)
 
@@ -136,19 +168,43 @@ class MainWindow(QtWidgets.QMainWindow):
         button_widget.setLayout(button_layout)
         button_widget.setFixedHeight(100)
 
-        input_layout = QHBoxLayout()
-        input_devices = self.myaudio.get_input_devices_info()
-        self.input_device_id = self.myaudio.get_default_input_device().get('index')
-        comboBox = QComboBox(self)
-        comboBox.setMaximumWidth(200)
+        # Input and Output device selection layout
+        device_layout = QHBoxLayout()
+        
+        # Input device selection
+        input_layout = QVBoxLayout()
+        input_label = QLabel("Input Device:")
+        input_label.setStyleSheet("color: white")
+        input_devices = self.my_audio.get_input_devices_info()
+        self.input_device_id = self.my_audio.get_default_input_device().get('index')
+        input_combo_box = QComboBox(self)
+        input_combo_box.setMaximumWidth(200)
         for device in input_devices:
-            comboBox.addItem(device.get('name'))
-        comboBox.activated[str].connect(self.input_choice)
-        input_layout.addWidget(comboBox)
-
-        input_widget = QWidget()
-        input_widget.setMaximumHeight(50)
-        input_widget.setLayout(input_layout)
+            input_combo_box.addItem(device.get('name'))
+        input_combo_box.activated[str].connect(self.input_choice)
+        input_layout.addWidget(input_label)
+        input_layout.addWidget(input_combo_box)
+        
+        # Output device selection
+        output_layout = QVBoxLayout()
+        output_label = QLabel("Output Device:")
+        output_label.setStyleSheet("color: white")
+        output_devices = self.my_audio.get_output_devices_info()
+        self.output_device_id = self.my_audio.get_default_output_device().get('index')
+        output_combo_box = QComboBox(self)
+        output_combo_box.setMaximumWidth(200)
+        for device in output_devices:
+            output_combo_box.addItem(device.get('name'))
+        output_combo_box.activated[str].connect(self.output_choice)
+        output_layout.addWidget(output_label)
+        output_layout.addWidget(output_combo_box)
+        
+        device_layout.addLayout(input_layout)
+        device_layout.addLayout(output_layout)
+        
+        device_widget = QWidget()
+        device_widget.setMaximumHeight(100)
+        device_widget.setLayout(device_layout)
 
         # Create the maptlotlib FigureCanvas object,
         self.sc = MplCanvas(self, width=5, height=4, dpi=100)
@@ -156,7 +212,6 @@ class MainWindow(QtWidgets.QMainWindow):
         plot_layout = QVBoxLayout()
         plot_layout.addWidget(self.sc)
         plot_widget = QWidget()
-        #plot_widget.setContentsMargins(0,50,0,0)
         plot_widget.setMinimumHeight(400)
         plot_widget.setLayout(plot_layout)
 
@@ -195,7 +250,7 @@ class MainWindow(QtWidgets.QMainWindow):
         info_widget.setLayout(info_layout)
 
         page_layout.addWidget(button_widget)
-        page_layout.addWidget(input_widget)
+        page_layout.addWidget(device_widget)
         page_layout.addWidget(plot_widget)
         page_layout.addWidget(control_widget)
         #page_layout.addWidget(info_widget)
@@ -206,16 +261,17 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.output_on:
             if self.monitor_on:
                 self.on_click()
-            self.myaudio.start_stream(output=True, chunk=CHUNK, device=self.input_device_id)
-            self.monitor_on = True
-            self.button_on.setText('MONITOR\nON')
-            self.button_on.setStyleSheet("background-color: #3a3a3a; color: green")
-            self.output_on = True
-            self.button_on_out.setText('OUTPUT\nON')
-            self.button_on_out.setStyleSheet("background-color: #3a3a3a; color: green")
-            self.timer.start(self.refresh_rate)
+            else:
+                self.my_audio.start_stream(output=True, chunk=CHUNK, device=self.input_device_id, output_device=self.output_device_id)
+                self.monitor_on = True
+                self.button_on.setText('MONITOR\nON')
+                self.button_on.setStyleSheet("background-color: #3a3a3a; color: green")
+                self.output_on = True
+                self.button_on_out.setText('OUTPUT\nON')
+                self.button_on_out.setStyleSheet("background-color: #3a3a3a; color: green")
+                self.timer.start(self.refresh_rate)
         else:
-            self.myaudio.stop_stream()
+            self.my_audio.stop_stream()
             self.monitor_on = False
             self.button_on.setText('MONITOR\nOFF')
             self.button_on.setStyleSheet("background-color: #777777")
@@ -226,39 +282,40 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def on_click(self):
         if not self.monitor_on:
-            self.myaudio.start_stream(output=False, chunk=CHUNK, device=self.input_device_id)
+            self.my_audio.start_stream(output=False, chunk=CHUNK, device=self.input_device_id)
             self.monitor_on = True
             self.button_on.setText('MONITOR\nON')
             self.button_on.setStyleSheet ("background-color: #3a3a3a; color: green")
             self.timer.start(self.refresh_rate)
         else:
-            if self.output_on:
-                self.on_click_out()
-            else:
-                self.myaudio.stop_stream()
-                self.monitor_on = False
-                self.button_on.setText('MONITOR\nOFF')
-                self.button_on.setStyleSheet ("background-color: #777777")
-                self.timer.stop()
+            self.my_audio.stop_stream()
+            self.monitor_on = False
+            self.button_on.setText('MONITOR\nOFF')
+            self.button_on.setStyleSheet ("background-color: #777777")
+            self.timer.stop()
 
     def update_data(self):
         try:
-            self.hz = self.sc.update_plot(self.myaudio.audio)
-            #self.hz_label.setText(str(self.hz)+ " Hz")
+            self.hz = self.sc.update_plot(self.my_audio.audio)
         except Exception as e:
             print(e)
 
     def input_choice(self, choice):
         self.input_device_id = self.get_device_index_by_name(choice)
-        if self.output_on or self.monitor_on:
-            self.myaudio.stop_stream()
-            self.myaudio.start_stream(output=self.output_on, chunk=CHUNK, device=self.input_device_id)
+        if self.monitor_on:
+            self.my_audio.stop_stream()
+            self.my_audio.start_stream(output=self.output_on, chunk=CHUNK, device=self.input_device_id)
 
+    def output_choice(self, choice):
+        self.output_device_id = self.get_device_index_by_name(choice, is_output=True)
+        if self.output_on:
+            self.my_audio.stop_stream()
+            self.my_audio.start_stream(output=True, chunk=CHUNK, device=self.input_device_id, output_device=self.output_device_id)
 
-    def get_device_index_by_name(self, choice):
-        input_devices = self.myaudio.get_input_devices_info()
+    def get_device_index_by_name(self, choice, is_output=False):
+        devices = self.my_audio.get_output_devices_info() if is_output else self.my_audio.get_input_devices_info()
         device_id = 0
-        for device in input_devices:
+        for device in devices:
             if device.get('name') == choice:
                 device_id = device.get('index')
         return device_id
@@ -267,6 +324,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sc.bx.set_xlim([0, value])
         self.sc.ax.set_xlim([0, 1000-value/10])
         self.sc.draw()
+
+    def closeEvent(self, event):
+        """Override closeEvent to ensure audio stream is properly closed"""
+        if self.monitor_on:
+            self.my_audio.stop_stream()
+        event.accept()
 
 
 app = QtWidgets.QApplication(sys.argv)
